@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System;
 using System.Linq;
 
-namespace ThreeDtbd.Utility
+namespace DoubTech.Senses.Utility
 {
     public abstract class Heap<T> : IEnumerable<T>
     {

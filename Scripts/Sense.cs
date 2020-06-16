@@ -1,9 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using ThreeDtbd.Utility;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
-namespace ThreeDtbd.Character 
+namespace DoubTech.Senses
 {
     public class Sense : MonoBehaviour
     {

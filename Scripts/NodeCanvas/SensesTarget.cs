@@ -1,10 +1,10 @@
+#if NODE_CANVAS
 using NodeCanvas.Framework;
 using ParadoxNotion.Design;
-using ThreeDtbd.Character;
 using UnityEngine;
-using static ThreeDtbd.Character.Sense;
+using static DoubTech.Senses.Sense;
 
-namespace ThreeDtbd.BT.Conditions
+namespace DoubTech.Senses.NodeCanvas
 {
 
     [Category("Senses")]
@@ -57,3 +57,4 @@ namespace ThreeDtbd.BT.Conditions
         }
     }
 }
+#endif
