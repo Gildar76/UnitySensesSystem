@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace DoubTech.Senses
@@ -57,6 +59,11 @@ namespace DoubTech.Senses
 
         private HashSet<GameObject> seenObjects = new HashSet<GameObject>();
         private HashSet<GameObject> heardObjects = new HashSet<GameObject>();
+
+        internal bool Senses(GameObject gameObject) {
+            return rememberedObjects.ContainsKey(gameObject);
+        }
+
         private HashSet<GameObject> smelledObjects = new HashSet<GameObject>();
         private HashSet<GameObject> implicitDetectedObjects = new HashSet<GameObject>();
 
@@ -66,6 +73,7 @@ namespace DoubTech.Senses
 
         private readonly int nearbySenseCapacity = 10;
 
+        public int LayerMask => targetMask;
         public bool SensesSomething => null != NearestSensedObject;
         public SensedObject NearestSensedObject { get; private set; }
         public SortedList<SensedObject, SensedObject> SensedObjects { get; private set; } = new SortedList<SensedObject, SensedObject>();
@@ -161,15 +169,6 @@ namespace DoubTech.Senses
                 sensedObject.actualPosition = collider.transform.position;
                 sensedObject.distance = sensedDistance;
 
-                if (sensedObject.distance < nearest) {
-                    var o = NearestSensedObject;
-                    NearestSensedObject = sensedObject;
-                    nearest = sensedObject.Distance;
-                    if(o != sensedObject) {
-                        nearestSensedChanged?.Invoke(o, sensedObject);
-                    }
-                }
-
                 if(lastSenseTime != sensedObject.lastDetection)
                 {
                     newlySensedObjects.Add(sensedObject);
@@ -190,10 +189,13 @@ namespace DoubTech.Senses
             lastSenseTime = detectionTime;
 
             SensedObject old = NearestSensedObject;
-            if (null != NearestSensedObject && Time.fixedTime - NearestSensedObject.lastDetection > timeToRetainNearest)
-            {
+            NearestSensedObject = SensedObjects.Count > 0 ? SensedObjects.First().Value : null;
+
+            if (null != NearestSensedObject && Time.fixedTime - NearestSensedObject.lastDetection > timeToRetainNearest) {
                 NearestSensedObject = null;
                 nearest = float.PositiveInfinity;
+                nearestSensedChanged?.Invoke(old, null);
+            } else if(old != NearestSensedObject) {
                 nearestSensedChanged?.Invoke(old, null);
             }
         }
