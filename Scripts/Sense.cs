@@ -201,6 +201,8 @@ namespace DoubTech.Senses
         }
 
         public void Forget(SensedObject target) {
+            if (!SensedObjects.ContainsKey(target)) return;
+
             GameObject go = target.TargetObject;
             SensedObjects.Remove(target);
             if (null != go) {
