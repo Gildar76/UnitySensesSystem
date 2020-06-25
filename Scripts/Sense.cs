@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -41,9 +42,10 @@ namespace DoubTech.Senses
         [Header("Targeting")]
         [SerializeField]
         private LayerMask targetMask;
+        [SerializeField, Tooltip("If checked the sense object will use a sphere collider to find all game objects within the target mask range. If this is not checked only objects with a SensableObject component will be tracked and distance will be ignored until sense evaluation.")]
+        private bool useSphereCast = true;
         [SerializeField, Tooltip("The amount of time the nearest target should be considered still detected after it is no longer sensed")]
         private float timeToRetainNearest = 5;
-
         [SerializeField]
         private float scentAccuracyRadius = 2;
 
@@ -70,7 +72,6 @@ namespace DoubTech.Senses
         private Dictionary<GameObject, SensedObject> rememberedObjects = new Dictionary<GameObject, SensedObject>();
 
         private float lastSenseTime;
-
         private readonly int nearbySenseCapacity = 10;
 
         public int LayerMask => targetMask;
@@ -105,7 +106,17 @@ namespace DoubTech.Senses
             }
             frame = 0;
             float nearest = float.MaxValue;
-            var objectsWithinSenses = Physics.OverlapSphere(transform.position, maxSenseRange, targetMask);
+
+            Collider[] colliders = null;
+            GameObject[] gameObjects = null;
+            int possibleTargetCount;
+            if(useSphereCast) {
+                colliders = Physics.OverlapSphere(transform.position, maxSenseRange, targetMask);
+                possibleTargetCount = colliders.Length;
+            } else {
+                gameObjects = SensableObject.Registry;
+                possibleTargetCount = gameObjects.Length;
+            }
             seenObjects.Clear();
             heardObjects.Clear();
             smelledObjects.Clear();
@@ -120,53 +131,56 @@ namespace DoubTech.Senses
             var newlySensedObjects = new HashSet<SensedObject>();
             float detectionTime = Time.fixedTime;
 
-            for (int i = 0; i < objectsWithinSenses.Length; i++)
+            for (int i = 0; i < possibleTargetCount; i++)
             {
-                Collider collider = objectsWithinSenses[i];
+                GameObject targetObject = useSphereCast ? colliders[i].gameObject : gameObjects[i];
                 SensedObject sensedObject;
 
-                if (collider.gameObject == gameObject) continue;
-                if (null != sensedObjectValidationListener && !sensedObjectValidationListener(collider.gameObject)) continue;
+                float actualDistance = Vector3.Distance(targetObject.transform.position, transform.position);
+                if (actualDistance > maxSenseRange) continue;
 
-                if (!rememberedObjects.TryGetValue(collider.gameObject, out sensedObject))
+                if (targetObject == gameObject) continue;
+                if (null != sensedObjectValidationListener && !sensedObjectValidationListener(targetObject)) continue;
+                
+
+                if (!rememberedObjects.TryGetValue(targetObject, out sensedObject))
                 {
-                    sensedObject = new SensedObject(collider.gameObject);
+                    sensedObject = new SensedObject(targetObject);
                     if(null != sensedObject.sensableObject && !sensedObject.sensableObject.IsSensable) {
                         sensedObject.sensableObject.onNoLongerSensableListener += () => {
                             Forget(sensedObject);
                         };
                     }
-                    rememberedObjects[collider.gameObject] = sensedObject;
+                    rememberedObjects[targetObject] = sensedObject;
                 }
 
-                float actualDistance = Vector3.Distance(collider.transform.position, transform.position);
                 float sensedDistance = actualDistance;
 
                 // Detection from least accurate to most.
                 if (actualDistance < scentRange)
                 {
-                    smelledObjects.Add(collider.gameObject);
-                    if (sensedObject.actualPosition != collider.transform.position)
+                    smelledObjects.Add(targetObject);
+                    if (sensedObject.actualPosition != targetObject.transform.position)
                     {
-                        sensedObject.position = collider.transform.position + UnityEngine.Random.insideUnitSphere * scentAccuracyRadius;
+                        sensedObject.position = targetObject.transform.position + UnityEngine.Random.insideUnitSphere * scentAccuracyRadius;
                     }
-                    sensedDistance = Vector3.Distance(collider.transform.position, transform.position);
+                    sensedDistance = Vector3.Distance(targetObject.transform.position, transform.position);
                     sensedObject.smelled = true;
                 }
-                if (CanSee(collider.gameObject))
+                if (CanSee(targetObject))
                 {
-                    seenObjects.Add(collider.gameObject);
-                    sensedObject.position = collider.transform.position;
+                    seenObjects.Add(targetObject);
+                    sensedObject.position = targetObject.transform.position;
                     sensedObject.seen = true;
                 }
                 if (actualDistance < implicitDetectionRange)
                 {
-                    implicitDetectedObjects.Add(collider.gameObject);
-                    sensedObject.position = collider.transform.position;
+                    implicitDetectedObjects.Add(targetObject);
+                    sensedObject.position = targetObject.transform.position;
                     sensedObject.implicitlyDetected = true;
                 }
 
-                sensedObject.actualPosition = collider.transform.position;
+                sensedObject.actualPosition = targetObject.transform.position;
                 sensedObject.distance = sensedDistance;
 
                 if(lastSenseTime != sensedObject.lastDetection)

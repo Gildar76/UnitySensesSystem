@@ -1,9 +1,13 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
+using System;
 
 namespace DoubTech.Senses {
     public class SensableObject : MonoBehaviour {
+        public static GameObject[] Registry = new GameObject[0];
+        private static readonly HashSet<GameObject> gameObjects = new HashSet<GameObject>();
         public delegate void OnNoLongerSensable();
 
         public OnNoLongerSensable onNoLongerSensableListener;
@@ -21,13 +25,23 @@ namespace DoubTech.Senses {
             }
         }
 
+        private void Awake() {
+            gameObjects.Add(gameObject);
+            Array.Resize(ref Registry, gameObjects.Count);
+            Registry[Registry.Length - 1] = gameObject;
+        }
+
         public void SafelyDestroy() {
             IsSensable = false;
             destronNextFrame = true;
         }
 
         private void LateUpdate() {
-            if (destronNextFrame) Destroy(gameObject);
+            if (destronNextFrame) {
+                Destroy(gameObject);
+                gameObjects.Remove(gameObject);
+                Registry = gameObjects.ToArray();
+            }
         }
     }
 }
