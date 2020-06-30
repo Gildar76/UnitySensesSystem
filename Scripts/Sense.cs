@@ -214,6 +214,25 @@ namespace DoubTech.Senses
             }
         }
 
+        /// <summary>
+        /// Fully reset the senses state. Callbacks will be left intact, but no callbacks will be issued.
+        /// </summary>
+        public void Reset()
+        {
+            SensedObjects.Clear();
+            rememberedObjects.Clear();
+            seenObjects.Clear();
+            heardObjects.Clear();
+            smelledObjects.Clear();
+            implicitDetectedObjects.Clear();
+        }
+
+        public void Forget(GameObject gameObject)
+        {
+            SensedObject so;
+            if (rememberedObjects.TryGetValue(gameObject, out so)) Forget(so);
+        }
+
         public void Forget(SensedObject target) {
             if (!SensedObjects.ContainsKey(target)) return;
 
