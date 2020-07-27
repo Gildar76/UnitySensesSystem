@@ -80,6 +80,9 @@ namespace DoubTech.Senses
         public SortedList<SensedObject, SensedObject> SensedObjects { get; private set; } = new SortedList<SensedObject, SensedObject>();
         public bool HasAdrenaline { get; set; } = false;
 
+        public delegate void NoLongerSensableEvent(GameObject gameObject);
+        public static NoLongerSensableEvent OnNoLongerSensable;
+
         public SensedObject this[GameObject gameObject] {
             get {
                 SensedObject so;
@@ -95,6 +98,15 @@ namespace DoubTech.Senses
         void Start()
         {
             maxSenseRange = Mathf.Max(visionRange, scentRange, hearingRange);
+        }
+
+        private void OnEnable() {
+            Reset();
+            OnNoLongerSensable += Forget;
+        }
+
+        private void OnDisable() {
+            OnNoLongerSensable -= Forget;
         }
 
         // Update is called once per frame

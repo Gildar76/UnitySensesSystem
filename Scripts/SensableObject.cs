@@ -21,6 +21,7 @@ namespace DoubTech.Senses {
                 if (value != isSensable) {
                     isSensable = value;
                     if (!isSensable) onNoLongerSensableListener?.Invoke();
+                    Sense.OnNoLongerSensable?.Invoke(gameObject);
                 }
             }
         }
