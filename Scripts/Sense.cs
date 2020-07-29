@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace DoubTech.Senses
 {
-    public class Sense : MonoBehaviour
+    public abstract class Sense : MonoBehaviour
     {
         public delegate void OnSensedNewObjectsEvent(HashSet<SensedObject> newObjects);
         public delegate void OnNearestSensedObjectChanged(SensedObject oldObject, SensedObject newObject);
@@ -16,72 +16,68 @@ namespace DoubTech.Senses
         [Header("Vision")]
         [Tooltip("A transform representing this creature's eyes")]
         [SerializeField]
-        private Transform eyes;
+        protected Transform eyes;
 
         [Tooltip("The maximum fov this creature can see at once")]
         [SerializeField]
-        private float fieldOfView = 110;
+        protected float fieldOfView = 110;
 
         [Tooltip("The maximum range that this creature can see other creatures")]
         [Header("Senses Range")]
         [SerializeField]
-        private float visionRange = 100f;
+        protected float visionRange = 100f;
 
         [Tooltip("The maximum range this creature can smell other creatures or scent trails")]
         [SerializeField]
-        private float scentRange = 0;
+        protected float scentRange = 0;
 
         [Tooltip("The maximum distance a creature can hear. This is used for filtering. There will be additional falloff and volume level filtering.")]
         [SerializeField]
-        private float hearingRange = 10f;
+        protected float hearingRange = 10f;
 
         [Tooltip("The distance from this creature that the creature knows there is another creature present. This fills any gaps from other senses that may not be 'true to life accurate' This should probably not be any larger than 1-2m")]
         [SerializeField]
-        private float implicitDetectionRange = 2f;
+        protected float implicitDetectionRange = 2f;
 
         [Header("Targeting")]
         [SerializeField]
-        private LayerMask targetMask;
+        protected LayerMask targetMask;
         [SerializeField, Tooltip("If checked the sense object will use a sphere collider to find all game objects within the target mask range. If this is not checked only objects with a SensableObject component will be tracked and distance will be ignored until sense evaluation.")]
-        private bool useSphereCast = true;
+        protected bool useSphereCast = true;
         [SerializeField, Tooltip("The amount of time the nearest target should be considered still detected after it is no longer sensed")]
-        private float timeToRetainNearest = 5;
+        protected float timeToRetainNearest = 5;
         [SerializeField]
-        private float scentAccuracyRadius = 2;
+        protected float scentAccuracyRadius = 2;
 
-        private int frame;
-        private int frequency = 4;
 
         public OnSensedNewObjectsEvent sensedNewObjectsListener;
         public OnNearestSensedObjectChanged nearestSensedChanged;
         public OnSensedObjectForgotten sensedObjectForgottenListener;
         public ValidTargetCheck sensedObjectValidationListener;
 
-        private float maxSenseRange;
+        protected float maxSenseRange;
 
-        private HashSet<GameObject> seenObjects = new HashSet<GameObject>();
-        private HashSet<GameObject> heardObjects = new HashSet<GameObject>();
+        protected HashSet<GameObject> seenObjects = new HashSet<GameObject>();
+        protected HashSet<GameObject> heardObjects = new HashSet<GameObject>();
 
-        internal bool Senses(GameObject gameObject) {
-            return rememberedObjects.ContainsKey(gameObject);
-        }
+        protected HashSet<GameObject> smelledObjects = new HashSet<GameObject>();
+        protected HashSet<GameObject> implicitDetectedObjects = new HashSet<GameObject>();
 
-        private HashSet<GameObject> smelledObjects = new HashSet<GameObject>();
-        private HashSet<GameObject> implicitDetectedObjects = new HashSet<GameObject>();
-
-        private Dictionary<GameObject, SensedObject> rememberedObjects = new Dictionary<GameObject, SensedObject>();
-
-        private float lastSenseTime;
-        private readonly int nearbySenseCapacity = 10;
+        protected Dictionary<GameObject, SensedObject> rememberedObjects = new Dictionary<GameObject, SensedObject>();
 
         public int LayerMask => targetMask;
         public bool SensesSomething => null != NearestSensedObject;
-        public SensedObject NearestSensedObject { get; private set; }
-        public SortedList<SensedObject, SensedObject> SensedObjects { get; private set; } = new SortedList<SensedObject, SensedObject>();
+        public SensedObject NearestSensedObject { get; protected set; }
+        public SortedList<SensedObject, SensedObject> SensedObjects { get; protected set; } = new SortedList<SensedObject, SensedObject>();
         public bool HasAdrenaline { get; set; } = false;
 
         public delegate void NoLongerSensableEvent(GameObject gameObject);
         public static NoLongerSensableEvent OnNoLongerSensable;
+
+        public bool showGizmos;
+        public bool Senses(GameObject gameObject) {
+            return rememberedObjects.ContainsKey(gameObject);
+        }
 
         public SensedObject this[GameObject gameObject] {
             get {
@@ -110,121 +106,12 @@ namespace DoubTech.Senses
         }
 
         // Update is called once per frame
-        void Update()
+        protected virtual void Update()
         {
-            if(!HasAdrenaline && frame++ < frequency)
-            {
-                return;
-            }
-            frame = 0;
-            float nearest = float.MaxValue;
-
-            Collider[] colliders = null;
-            GameObject[] gameObjects = null;
-            int possibleTargetCount;
-            if(useSphereCast) {
-                colliders = Physics.OverlapSphere(transform.position, maxSenseRange, targetMask);
-                possibleTargetCount = colliders.Length;
-            } else {
-                gameObjects = SensableObject.Registry;
-                possibleTargetCount = gameObjects.Length;
-            }
-            seenObjects.Clear();
-            heardObjects.Clear();
-            smelledObjects.Clear();
-
-            // TODO: We may want to think about creating a new set each frame. This was just updating
-            // the set, but I was getting a concurrent modification exception from AnimalUtilityData since
-            // it is operating in a coroutine instead of on the main thread. Let's discuss how to properly
-            // optimize this. We could potentially go with a static list and create a copy for consumers
-            // that request the list when they want it. We can also optimize consumers of the list to use
-            // the OnNewObjectsSensed listener for updates
-            var sensedObjects = new SortedSet<SensedObject>();
-            var newlySensedObjects = new HashSet<SensedObject>();
-            float detectionTime = Time.fixedTime;
-
-            for (int i = 0; i < possibleTargetCount; i++)
-            {
-                GameObject targetObject = useSphereCast ? colliders[i].gameObject : gameObjects[i];
-                SensedObject sensedObject;
-
-                float actualDistance = Vector3.Distance(targetObject.transform.position, transform.position);
-                if (actualDistance > maxSenseRange) continue;
-
-                if (targetObject == gameObject) continue;
-                if (null != sensedObjectValidationListener && !sensedObjectValidationListener(targetObject)) continue;
-                
-
-                if (!rememberedObjects.TryGetValue(targetObject, out sensedObject))
-                {
-                    sensedObject = new SensedObject(targetObject);
-                    if(null != sensedObject.sensableObject && !sensedObject.sensableObject.IsSensable) {
-                        sensedObject.sensableObject.onNoLongerSensableListener += () => {
-                            Forget(sensedObject);
-                        };
-                    }
-                    rememberedObjects[targetObject] = sensedObject;
-                }
-
-                float sensedDistance = actualDistance;
-
-                // Detection from least accurate to most.
-                if (actualDistance < scentRange)
-                {
-                    smelledObjects.Add(targetObject);
-                    if (sensedObject.actualPosition != targetObject.transform.position)
-                    {
-                        sensedObject.position = targetObject.transform.position + UnityEngine.Random.insideUnitSphere * scentAccuracyRadius;
-                    }
-                    sensedDistance = Vector3.Distance(targetObject.transform.position, transform.position);
-                    sensedObject.smelled = true;
-                }
-                if (CanSee(targetObject))
-                {
-                    seenObjects.Add(targetObject);
-                    sensedObject.position = targetObject.transform.position;
-                    sensedObject.seen = true;
-                }
-                if (actualDistance < implicitDetectionRange)
-                {
-                    implicitDetectedObjects.Add(targetObject);
-                    sensedObject.position = targetObject.transform.position;
-                    sensedObject.implicitlyDetected = true;
-                }
-
-                sensedObject.actualPosition = targetObject.transform.position;
-                sensedObject.distance = sensedDistance;
-
-                if(lastSenseTime != sensedObject.lastDetection)
-                {
-                    newlySensedObjects.Add(sensedObject);
-                }
-
-                sensedObject.lastDetection = detectionTime;
-                SensedObjects[sensedObject] = sensedObject;
-
-                while(SensedObjects.Count > nearbySenseCapacity) {
-                    SensedObjects.RemoveAt(nearbySenseCapacity);
-                }
-            }
-            if (newlySensedObjects.Count > 0)
-            {
-                OnSensedNewObjects(newlySensedObjects);
-            }
-
-            lastSenseTime = detectionTime;
-
-            SensedObject old = NearestSensedObject;
-            NearestSensedObject = SensedObjects.Count > 0 ? SensedObjects.First().Value : null;
-
-            if (null != NearestSensedObject && Time.fixedTime - NearestSensedObject.lastDetection > timeToRetainNearest) {
-                NearestSensedObject = null;
-                nearest = float.PositiveInfinity;
-                nearestSensedChanged?.Invoke(old, null);
-            } else if(old != NearestSensedObject) {
-                nearestSensedChanged?.Invoke(old, null);
-            }
+            OnUpdateSenses();
         }
+
+        protected abstract void OnUpdateSenses();
 
         /// <summary>
         /// Fully reset the senses state. Callbacks will be left intact, but no callbacks will be issued.
@@ -266,8 +153,23 @@ namespace DoubTech.Senses
             }
             sensedObjectForgottenListener?.Invoke(target);
         }
+        protected bool RememberSensedObject(GameObject targetObject, out SensedObject sensedObject) {
+            if (!rememberedObjects.TryGetValue(targetObject, out sensedObject)) {
+                sensedObject = new SensedObject(targetObject);
+                if (null != sensedObject.sensableObject && !sensedObject.sensableObject.IsSensable) {
+                    var forgettable = sensedObject;
+                    sensedObject.sensableObject.onNoLongerSensableListener += () => {
+                        Forget(forgettable);
+                    };
+                }
+                rememberedObjects[targetObject] = sensedObject;
+                return true;
+            }
 
-        private void OnSensedNewObjects(HashSet<SensedObject> newlySensedObjects)
+            return false;
+        }
+
+        protected void OnSensedNewObjects(HashSet<SensedObject> newlySensedObjects)
         {
             sensedNewObjectsListener?.Invoke(newlySensedObjects);
         }
@@ -285,15 +187,17 @@ namespace DoubTech.Senses
             // TODO: Check if object is actually visible in line of sight
         }
 
-        private void OnDrawGizmos()
-        {
+        private void OnDrawGizmos() {
+            if (!showGizmos) return;
+
             if (null != NearestSensedObject) {
                 Gizmos.DrawSphere(NearestSensedObject.Position, .3f);
             }
         }
 
-        void OnDrawGizmosSelected()
-        {
+        void OnDrawGizmosSelected() {
+            if (!showGizmos) return;
+
             Gizmos.color = Color.gray;
             Gizmos.DrawWireSphere(transform.position, maxSenseRange);
             if (eyes != null)
